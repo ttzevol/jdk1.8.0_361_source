@@ -599,6 +599,8 @@ public abstract class AbstractQueuedSynchronizer
     /**
      * Creates and enqueues node for current thread and given mode.
      *
+     * 将线程封装成 node 节点，并且将该节点插入 AQS 队列末尾，并且作为 tail
+     *
      * @param mode Node.EXCLUSIVE for exclusive, Node.SHARED for shared
      * @return the new node
      */
@@ -607,13 +609,13 @@ public abstract class AbstractQueuedSynchronizer
         // Try the fast path of enq; backup to full enq on failure
         Node pred = tail;
         if (pred != null) {
-            node.prev = pred;
-            if (compareAndSetTail(pred, node)) {
-                pred.next = node;
+            node.prev = pred; // 这里先将我们的前指针指向了队尾节点，这也是面试题常问为什么队列是从后往前遍历的原因
+            if (compareAndSetTail(pred, node)) { // 将节点作为队尾节点
+                pred.next = node; // 再将前一个节点的指针指向自己
                 return node;
             }
         }
-        enq(node);
+        enq(node); // 如果当前尾节点不存在，也就是说没有队尾节点
         return node;
     }
 
@@ -651,10 +653,10 @@ public abstract class AbstractQueuedSynchronizer
          * traverse backwards from tail to find the actual
          * non-cancelled successor.
          */
-        Node s = node.next;
+        Node s = node.next; // 拿到头节点的下个节点
         if (s == null || s.waitStatus > 0) {
-            s = null;
-            for (Node t = tail; t != null && t != node; t = t.prev)
+            s = null; // next 节点不用唤醒，唤醒的是 next 的 next
+            for (Node t = tail; t != null && t != node; t = t.prev) // 从尾部开始找，找到状态正常的节点
                 if (t.waitStatus <= 0)
                     s = t;
         }
@@ -850,6 +852,9 @@ public abstract class AbstractQueuedSynchronizer
      * Acquires in exclusive uninterruptible mode for thread already in
      * queue. Used by condition wait methods as well as acquire.
      *
+     * 这个方法会判断当前的节点是不是 head 的 next 节点，如果是，就会尝试获取锁资源
+     * ，否则就等待
+     *
      * @param node the node
      * @param arg the acquire argument
      * @return {@code true} if interrupted while waiting
@@ -859,15 +864,15 @@ public abstract class AbstractQueuedSynchronizer
         try {
             boolean interrupted = false;
             for (;;) {
-                final Node p = node.predecessor();
-                if (p == head && tryAcquire(arg)) {
-                    setHead(node);
+                final Node p = node.predecessor();  // 拿到节点的前指针指向的节点
+                if (p == head && tryAcquire(arg)) { // 节点必须是头节点，并且获取锁成功才会进入
+                    setHead(node); // 将当前节点设为头节点
                     p.next = null; // help GC
-                    failed = false;
+                    failed = false; // 设置获取锁资源成功
                     return interrupted;
                 }
-                if (shouldParkAfterFailedAcquire(p, node) &&
-                    parkAndCheckInterrupt())
+                if (shouldParkAfterFailedAcquire(p, node) && // 如果不是或者获取锁资源失败,尝试将线程挂起，并且确保当前节点的上一个节点状态正常
+                    parkAndCheckInterrupt()) // 挂起线程
                     interrupted = true;
             }
         } finally {
@@ -1195,8 +1200,8 @@ public abstract class AbstractQueuedSynchronizer
      *        can represent anything you like.
      */
     public final void acquire(int arg) {
-        if (!tryAcquire(arg) &&
-            acquireQueued(addWaiter(Node.EXCLUSIVE), arg))
+        if (!tryAcquire(arg) && // 首先尝试获取锁
+            acquireQueued(addWaiter(Node.EXCLUSIVE), arg)) // 如果抢锁失败，去排队
             selfInterrupt();
     }
 
@@ -1258,10 +1263,10 @@ public abstract class AbstractQueuedSynchronizer
      * @return the value returned from {@link #tryRelease}
      */
     public final boolean release(int arg) {
-        if (tryRelease(arg)) {
-            Node h = head;
-            if (h != null && h.waitStatus != 0)
-                unparkSuccessor(h);
+        if (tryRelease(arg)) { // 尝试释放锁
+            Node h = head; // 获取当前的头节点
+            if (h != null && h.waitStatus != 0) // 如果头节点不为空
+                unparkSuccessor(h); // 唤醒线程
             return true;
         }
         return false;

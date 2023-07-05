@@ -337,7 +337,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      */
     static final int hash(Object key) {
         int h;
-        return (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16);
+        return (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16); // 为了使高16位参与运算，减少哈希冲突
     }
 
     /**
@@ -393,6 +393,8 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * necessary. When allocated, length is always a power of two.
      * (We also tolerate length zero in some operations to allow
      * bootstrapping mechanics that are currently not needed.)
+     *
+     * 保存节点的数组，元素通过 hash ，分配到数组的各个位置，每一个 Node 又是一个链表节点结构
      */
     transient Node<K,V>[] table;
 
@@ -627,21 +629,25 @@ public class HashMap<K,V> extends AbstractMap<K,V>
     final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
                    boolean evict) {
         Node<K,V>[] tab; Node<K,V> p; int n, i;
-        if ((tab = table) == null || (n = tab.length) == 0)
+        if ((tab = table) == null || (n = tab.length) == 0) // 如果数组为空，或者数组长度为0，初始化数组长度
             n = (tab = resize()).length;
-        if ((p = tab[i = (n - 1) & hash]) == null)
+        if ((p = tab[i = (n - 1) & hash]) == null) // 将我们的 key 与上 数组长度 - 1 以后便是我们的下标值，如果这个位置没有元素，直接添加
             tab[i] = newNode(hash, key, value, null);
         else {
             Node<K,V> e; K k;
+            // 如果两个元素 hash 值相等，并且 key 值相等，直接替换
             if (p.hash == hash &&
                 ((k = p.key) == key || (key != null && key.equals(k))))
                 e = p;
+            // 否则，看下是否为红黑树结构
             else if (p instanceof TreeNode)
                 e = ((TreeNode<K,V>)p).putTreeVal(this, tab, hash, key, value);
             else {
+                // 一直遍历链表，直到，找到最后一个节点
                 for (int binCount = 0; ; ++binCount) {
                     if ((e = p.next) == null) {
                         p.next = newNode(hash, key, value, null);
+                        // 当我们的节点数量大于 8 的时候，需要链表转为红黑树
                         if (binCount >= TREEIFY_THRESHOLD - 1) // -1 for 1st
                             treeifyBin(tab, hash);
                         break;
@@ -677,12 +683,15 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * @return the table
      */
     final Node<K,V>[] resize() {
+        // 获取旧的数组
         Node<K,V>[] oldTab = table;
+        // 获取旧数组的长度
         int oldCap = (oldTab == null) ? 0 : oldTab.length;
+        // 获取原来触发扩容的元素数量
         int oldThr = threshold;
         int newCap, newThr = 0;
         if (oldCap > 0) {
-            if (oldCap >= MAXIMUM_CAPACITY) {
+            if (oldCap >= MAXIMUM_CAPACITY) { // 如果数组长度大于最大数组长度，则将触发扩容的限制改为整数最大值
                 threshold = Integer.MAX_VALUE;
                 return oldTab;
             }
@@ -693,6 +702,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
         else if (oldThr > 0) // initial capacity was placed in threshold
             newCap = oldThr;
         else {               // zero initial threshold signifies using defaults
+            // 如果数组长度和元素都小于0，触发扩容限制数量也小于0，则将容量定位初始容量
             newCap = DEFAULT_INITIAL_CAPACITY;
             newThr = (int)(DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);
         }
@@ -703,8 +713,9 @@ public class HashMap<K,V> extends AbstractMap<K,V>
         }
         threshold = newThr;
         @SuppressWarnings({"rawtypes","unchecked"})
-        Node<K,V>[] newTab = (Node<K,V>[])new Node[newCap];
+        Node<K,V>[] newTab = (Node<K,V>[])new Node[newCap]; // 创建新的数组
         table = newTab;
+        // 复制旧的数组到新数组中去
         if (oldTab != null) {
             for (int j = 0; j < oldCap; ++j) {
                 Node<K,V> e;
@@ -756,7 +767,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      */
     final void treeifyBin(Node<K,V>[] tab, int hash) {
         int n, index; Node<K,V> e;
-        if (tab == null || (n = tab.length) < MIN_TREEIFY_CAPACITY)
+        if (tab == null || (n = tab.length) < MIN_TREEIFY_CAPACITY) // 如果数组长度还没达到树化的最小阈值，那先扩容数组
             resize();
         else if ((e = tab[index = (n - 1) & hash]) != null) {
             TreeNode<K,V> hd = null, tl = null;

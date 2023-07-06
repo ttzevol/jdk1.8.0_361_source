@@ -1,6 +1,9 @@
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -13,6 +16,8 @@ public class Main {
         testMap();
 
         testLock();
+
+        testThreadPool();
     }
 
     public static void testMap() {
@@ -31,6 +36,20 @@ public class Main {
         ReentrantLock fairLock = new ReentrantLock(true);
         fairLock.lock();
         fairLock.unlock();
+    }
+
+    public static void testThreadPool() {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                1,
+                1,
+                10,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(10),
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
+        executor.execute(() -> {
+            System.out.println("test thread pool");
+        });
     }
 
 }

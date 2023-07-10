@@ -335,6 +335,9 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * and the shift/mask constants below adjusted. But until the need
      * arises, this code is a bit faster and simpler using an int.
      *
+     * 用一个 int 保存了这两个值，如果有需要，可以考虑使用 AtomicLong，但是现在
+     * 使用 int 会更快更简单一点
+     *
      * The workerCount is the number of workers that have been
      * permitted to start and not permitted to stop.  The value may be
      * transiently different from the actual number of live threads,
@@ -345,28 +348,29 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      *
      * The runState provides the main lifecycle control, taking on values:
      *
-     *   RUNNING:  Accept new tasks and process queued tasks
-     *   SHUTDOWN: Don't accept new tasks, but process queued tasks
+     *   RUNNING:  Accept new tasks and process queued tasks             接受新的任务，并且执行队列中的任务
+     *   SHUTDOWN: Don't accept new tasks, but process queued tasks      不接受新的任务，但是会把队列中的任务执行完毕
      *   STOP:     Don't accept new tasks, don't process queued tasks,
-     *             and interrupt in-progress tasks
-     *   TIDYING:  All tasks have terminated, workerCount is zero,
+     *             and interrupt in-progress tasks                       不接受新的任务，并且也不执行队列中的任务，而且会打断
+     *                                                                   正在执行的任务
+     *   TIDYING:  All tasks have terminated, workerCount is zero,       正在执行的线程数量为0，调用 terminated()
      *             the thread transitioning to state TIDYING
-     *             will run the terminated() hook method
+     *             will run the terminated() hook method                 terminated() 执行完毕
      *   TERMINATED: terminated() has completed
      *
      * The numerical order among these values matters, to allow
      * ordered comparisons. The runState monotonically increases over
      * time, but need not hit each state. The transitions are:
      *
-     * RUNNING -> SHUTDOWN
+     * RUNNING -> SHUTDOWN                                                  调用 shutdown
      *    On invocation of shutdown(), perhaps implicitly in finalize()
-     * (RUNNING or SHUTDOWN) -> STOP
+     * (RUNNING or SHUTDOWN) -> STOP                                        调用 shutdownNow
      *    On invocation of shutdownNow()
-     * SHUTDOWN -> TIDYING
+     * SHUTDOWN -> TIDYING                                                  当线程池和阻塞队列都没有执行任务的时候
      *    When both queue and pool are empty
-     * STOP -> TIDYING
+     * STOP -> TIDYING                                                      当线程池任务为空的时候
      *    When pool is empty
-     * TIDYING -> TERMINATED
+     * TIDYING -> TERMINATED                                                当 terminated 方法执行完成的时候
      *    When the terminated() hook method has completed
      *
      * Threads waiting in awaitTermination() will return when the
@@ -445,6 +449,8 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * queues such as DelayQueues for which poll() is allowed to
      * return null even if it may later return non-null when delays
      * expire.
+     *
+     * 阻塞队列，用于存放任务
      */
     private final BlockingQueue<Runnable> workQueue;
 
@@ -903,21 +909,21 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
         retry:
         for (;;) {
             int c = ctl.get();
-            int rs = runStateOf(c);
+            int rs = runStateOf(c); // 获取当前线程池的状态
 
-            // Check if queue empty only if necessary.
-            if (rs >= SHUTDOWN &&
-                ! (rs == SHUTDOWN &&
-                   firstTask == null &&
-                   ! workQueue.isEmpty()))
+            // Check if queue empty only if necessary. 仅在必要的时候检查队列是否为空
+            if (rs >= SHUTDOWN && // 线程池不是 Running 状态
+                ! (rs == SHUTDOWN &&        // 线程池状态为 shutdown
+                   firstTask == null &&     // 任务为空
+                   ! workQueue.isEmpty())) //  阻塞队列不为空 三个条件只要一个条件不满足，就没有必要往下走了
                 return false;
 
             for (;;) {
-                int wc = workerCountOf(c);
-                if (wc >= CAPACITY ||
-                    wc >= (core ? corePoolSize : maximumPoolSize))
+                int wc = workerCountOf(c);      //  获取当前工作线程的个数
+                if (wc >= CAPACITY ||           //  如果工作线程数量已经大于限制数量，直接返回
+                    wc >= (core ? corePoolSize : maximumPoolSize)) // 如果工作线程数量大于核心线程数量，直接返回
                     return false;
-                if (compareAndIncrementWorkerCount(c))
+                if (compareAndIncrementWorkerCount(c)) // 通过 CAS 增加工作线程得数量，如果增加成功，终止循环
                     break retry;
                 c = ctl.get();  // Re-read ctl
                 if (runStateOf(c) != rs)
@@ -1364,13 +1370,13 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
          * and so reject the task.
          */
         int c = ctl.get();
-        if (workerCountOf(c) < corePoolSize) {
+        if (workerCountOf(c) < corePoolSize) { // 如果工作线程数量小于 核心线程数量，将我们的任务添加给工作线程
             if (addWorker(command, true))
-                return;
+                return; // 添加成功以后直接返回
             c = ctl.get();
         }
-        if (isRunning(c) && workQueue.offer(command)) {
-            int recheck = ctl.get();
+        if (isRunning(c) && workQueue.offer(command)) {  // 如果线程是 Running 的状态，并且任务成功添加阻塞队列
+            int recheck = ctl.get();                     // 再次获取线程状态，判断线程状态是否正常
             if (! isRunning(recheck) && remove(command))
                 reject(command);
             else if (workerCountOf(recheck) == 0)
